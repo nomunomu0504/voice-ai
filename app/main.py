@@ -1,5 +1,9 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import datetime
+import time
+
+import requests
 import uvicorn
 import streamlit as st
 
@@ -18,7 +22,7 @@ SPLIT_THRESHOLD = 4
 TIME_BUFFER = 0.1
 # 待機中の実行スパン（s）
 SLEEP_ITER = 0.2
-TTS_ENDPOINT = 'http://localhost:8000/tts'
+TTS_ENDPOINT = 'https://nomunomu0504.ngrok.dev/tts'
 
 app = FastAPI()
 
@@ -52,6 +56,7 @@ def split_text(text: str):
 
 
 def TTS_streamer(text: str):
+    print(f'TTS_streamer - 実行開始：{text}')
     with torch.no_grad():
         wav = text2speech(text)["wav"]
         filename = str(uuid.uuid4())
@@ -74,8 +79,16 @@ def sound_player(response_content: str):
                 """ % audio_str
 
     audio_placeholder.empty()
-    datetime.time.sleep(0.5)
+    time.sleep(0.5)
     audio_placeholder.markdown(audio_html, unsafe_allow_html=True)
+
+
+def get_tts_sound(text: str, url=TTS_ENDPOINT):
+    print(f'get_tts_sound - 実行開始：text: {text}, url: {url}')
+    params = {'text': text}
+    response = requests.get(url, params=params)
+    print(f'実行完了：{response}')
+    return response.content, datetime.datetime.now()
 
 
 @app.get("/tts")
@@ -84,15 +97,17 @@ async def tts_streamer(text: str):
 
 
 @app.get("/voice")
-def voice(text: str = None):
+async def voice(text: str = None):
     if text is None:
         return {"error": "text is required"}
 
+    executor = ThreadPoolExecutor(max_workers=2)
     futures = []
     split_response = split_text(text)
 
     for sq_text in split_response:
-        futures.append(tts_streamer(sq_text))
+        future = executor.submit(get_tts_sound, sq_text)
+        futures.append(future)
 
     block_time_list = [datetime.timedelta() for i in range(len(futures))]
     current_time = datetime.datetime.now()
@@ -100,10 +115,16 @@ def voice(text: str = None):
     res_index = 0
     gap_time = datetime.timedelta()
     while res_index < len(futures):
+        print(f'res_index: {res_index}')
         future = futures[res_index]
+        print(f'future: {future}')
         if future.done():
             if res_index == 0:
                 base_time = datetime.datetime.now()
+
+            print(f'now: {datetime.datetime.now()}')
+            print(f'base_time: {base_time}')
+            print(f'block_time_list: {block_time_list}')
             if datetime.datetime.now() > base_time + block_time_list[res_index]:
                 for i in range(len(block_time_list)):
                     if i > res_index:
@@ -117,10 +138,10 @@ def voice(text: str = None):
                 sound_player(future.result()[0])
                 res_index += 1
                 gap_time = datetime.timedelta()
-            elif res_index != 0:
-                gap_time += datetime.timedelta(seconds=SLEEP_ITER)
-            datetime.time.sleep(SLEEP_ITER)
-
+        elif res_index != 0:
+            gap_time += datetime.timedelta(seconds=SLEEP_ITER)
+        time.sleep(SLEEP_ITER)
+    executor.shutdown()
 
 if __name__ == "__main__":
     config = uvicorn.Config(
