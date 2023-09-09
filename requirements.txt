@@ -4,3 +4,4 @@ uvicorn
 espnet
 SoundFile
 espnet_model_zoo
+streamlit

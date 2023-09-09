@@ -6,9 +6,12 @@ services:
     command: bash -c "python main.py"
     volumes:
       - ./app:/app
+      - data:/root/nltk_data
     ports:
       - 8000:8000
     restart: always
     privileged: true
     tty: true
     stdin_open: true
+volumes:
+  data:
