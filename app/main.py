@@ -1,3 +1,5 @@
+import uvicorn
+
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from espnet2.bin.tts_inference import Text2Speech
@@ -31,3 +33,9 @@ def TTS_streamer(text: str):
 @router.get("/tts")
 async def tts_streamer(text: str):
     return StreamingResponse(TTS_streamer(text), media_type="audio/wav")
+
+if __name__ == "__main__":
+    config = uvicorn.Config("main:app", host="0.0.0.0",
+                            port=8000, log_level="info")
+    server = uvicorn.Server(config)
+    server.run()
